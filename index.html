@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>校友圈 - iPhone 16 Prototype</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & Babel for browser-side compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+      /* Hide scrollbar */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
+      body {
+        background-color: #cbd5e1; 
+        color: #334155;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        overflow: hidden; /* Prevent body scroll */
+      }
+      button, a { -webkit-tap-highlight-color: transparent; }
+      
+      /* Animations */
+      @keyframes like-bounce {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.3); }
+        100% { transform: scale(1); }
+      }
+      .animate-like { animation: like-bounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+      
+      @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      @keyframes slideRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes zoomIn { from { transform: scale(0); } to { transform: scale(1); } }
+    </style>
+
+    <!-- Import Map for ESM Modules -->
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.292.0",
+    "recharts": "https://esm.sh/recharts@2.12.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+</head>
+<body>
+    <div id="root" class="w-full h-full flex justify-center items-center"></div>
+
+    <!-- MAIN APPLICATION SCRIPT -->
+    <script type="text/babel" data-type="module" data-presets="typescript,react">
+      import React, { useState, useEffect, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import * as Lucide from 'lucide-react';
+      import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+      // Destructure Icons to match original code usage
+      const { 
+        MoreHorizontal, Disc, Home, ShoppingBag, Plus, MessageCircle, User, 
+        Heart, Share2, Clock, MapPin, Search, Bell, Sparkles, X, History, 
+        ShieldCheck, Zap, ChevronRight, Image: ImageIcon, Eye, EyeOff, 
+        Phone, Video, Send, Smile, Camera, Check, LogOut, Lock, UserX, 
+        Moon, Smartphone, Shield, Key, Ghost, Link, Flag, Trash2, Copy, 
+        Music, ArrowRight, ArrowLeft, AlertCircle, CheckCircle
+      } = Lucide;
+
+      // --- TYPES ---
+      enum Tab {
+        HOME = 'HOME',
+        MARKET = 'MARKET',
+        PUBLISH = 'PUBLISH',
+        MESSAGE = 'MESSAGE',
+        PROFILE = 'PROFILE'
+      }
+
+      enum PostType {
+        SOCIAL = 'SOCIAL',
+        LOST_FOUND = 'LOST_FOUND',
+        TRADE = 'TRADE',
+        ERRAND = 'ERRAND'
+      }
+
+      interface User {
+        id: string;
+        name: string;
+        avatar: string;
+        verified: boolean;
+        department?: string;
+        bio?: string;
+        school?: string;
+      }
+
+      interface Comment {
+        id: string;
+        user: User;
+        content: string;
+        timestamp: string;
+        likes: number;
+      }
+
+      interface Post {
+        id: string;
+        user: User;
+        type: PostType;
+        category?: string;
+        content: string;
+        images?: string[];
+        tags: string[];
+        likes: number;
+        comments: number;
+        shares?: number;
+        timestamp: string;
+        isAnonymous?: boolean;
+        price?: number; 
+        deadline?: string; 
+        viewCount?: number;
+      }
+
+      interface ChatMessage {
+        id: string;
+        sender: string;
+        content: string;
+        time: string;
+        unread: boolean;
+        avatar: string;
+        isMe?: boolean;
+      }
+
+      // --- COMPONENTS ---
+
+      const MiniCapsule = () => {
+        return (
+          <div className="absolute top-[14px] right-[24px] z-[100] flex items-center bg-white/60 backdrop-blur-md border border-gray-200/50 rounded-full px-3 py-1.5 gap-3 shadow-sm h-8 w-[87px] justify-between box-border">
+            <div className="flex items-center justify-center w-6">
+              <MoreHorizontal size={18} className="text-black" strokeWidth={2.5} />
+            </div>
+            <div className="w-[1px] h-4 bg-gray-300/80"></div>
+            <div className="flex items-center justify-center w-6">
+              <div className="w-4 h-4 rounded-full border-[1.5px] border-black relative flex items-center justify-center">
+                  <div className="w-1 h-1 bg-black rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const TabBar = ({ currentTab, onTabChange }) => {
+        const getTabClass = (tab) => {
+          return currentTab === tab 
+            ? "text-sky-500 scale-110" 
+            : "text-gray-300 hover:text-gray-400";
+        };
+
+        return (
+          <div className="fixed bottom-5 left-4 right-4 h-16 z-50 max-w-md mx-auto">
+            <div className="absolute inset-0 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.08)] rounded-[2.5rem] border border-gray-50/50"></div>
+            <div className="relative h-full flex items-center justify-around px-4">
+              <button onClick={() => onTabChange(Tab.HOME)} className={`flex flex-col items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${getTabClass(Tab.HOME)}`}>
+                <Home size={26} strokeWidth={currentTab === Tab.HOME ? 2.8 : 2} className={currentTab === Tab.HOME ? 'fill-sky-100' : ''} />
+              </button>
+              <button onClick={() => onTabChange(Tab.MARKET)} className={`flex flex-col items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${getTabClass(Tab.MARKET)}`}>
+                <ShoppingBag size={26} strokeWidth={currentTab === Tab.MARKET ? 2.8 : 2} className={currentTab === Tab.MARKET ? 'fill-sky-100' : ''} />
+              </button>
+              <button onClick={() => onTabChange(Tab.PUBLISH)} className="flex flex-col items-center justify-center w-14 h-14 -mt-10 group">
+                <div className="bg-gradient-to-tr from-sky-400 to-indigo-400 rounded-full p-3.5 shadow-lg shadow-sky-200 text-white transform group-active:scale-90 transition-all duration-200 border-4 border-[#f0f4f8]">
+                  <Plus size={28} strokeWidth={3} />
+                </div>
+              </button>
+              <button onClick={() => onTabChange(Tab.MESSAGE)} className={`flex flex-col items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${getTabClass(Tab.MESSAGE)}`}>
+                <MessageCircle size={26} strokeWidth={currentTab === Tab.MESSAGE ? 2.8 : 2} className={currentTab === Tab.MESSAGE ? 'fill-sky-100' : ''} />
+              </button>
+              <button onClick={() => onTabChange(Tab.PROFILE)} className={`flex flex-col items-center justify-center w-12 h-12 rounded-full transition-all duration-300 ${getTabClass(Tab.PROFILE)}`}>
+                <User size={26} strokeWidth={currentTab === Tab.PROFILE ? 2.8 : 2} className={currentTab === Tab.PROFILE ? 'fill-sky-100' : ''} />
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const PostCard = ({ post, onClick, onShare, onOptions }) => {
+        const [isLiked, setIsLiked] = useState(false);
+        const [likesCount, setLikesCount] = useState(post.likes);
+        const isErrand = post.type === PostType.ERRAND;
+        const isTrade = post.type === PostType.TRADE;
+
+        const handleLike = (e) => {
+          e.stopPropagation();
+          if (isLiked) { setLikesCount(p => p - 1); } else { setLikesCount(p => p + 1); }
+          setIsLiked(!isLiked);
+        };
+
+        return (
+          <div onClick={onClick} className="bg-white p-4 mb-3 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] rounded-3xl mx-3 active:scale-[0.99] transition-transform duration-200 cursor-pointer border border-white">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  {post.isAnonymous ? (
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-sky-300 to-indigo-300 flex items-center justify-center text-white font-bold text-lg border-2 border-white shadow-sm">🤫</div>
+                  ) : (
+                    <img src={post.user.avatar} alt={post.user.name} className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm" />
+                  )}
+                  {!post.isAnonymous && post.user.verified && (
+                     <div className="absolute -bottom-1 -right-1 bg-yellow-400 text-white text-[8px] p-0.5 rounded-full border-2 border-white">V</div>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold text-[15px] ${post.isAnonymous ? 'text-gray-600' : 'text-slate-800'}`}>
+                      {post.isAnonymous ? "匿名同学" : post.user.name}
+                    </span>
+                    {post.user.department && !post.isAnonymous && (
+                       <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 rounded-full">{post.user.department}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                     <span>{post.timestamp}</span>
+                     {post.viewCount && <span>· {post.viewCount} 阅读</span>}
+                  </div>
+                </div>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); onOptions && onOptions(); }} className="text-gray-300 bg-gray-50 p-1.5 rounded-full hover:bg-gray-100">
+                <MoreHorizontal size={18} />
+              </button>
+            </div>
+            <div className="pl-1">
+              {(isErrand || isTrade) && (
+                <div className="inline-flex items-center gap-2 mb-2 bg-slate-50 px-3 py-1.5 rounded-2xl">
+                   <span className={`text-xs font-bold ${isErrand ? 'text-orange-500' : 'text-emerald-500'}`}>
+                     {isErrand ? '#跑腿求助' : '#闲置回血'}
+                   </span>
+                   {post.price && (
+                     <span className="text-rose-500 font-extrabold text-base"><span className="text-xs mr-0.5">¥</span>{post.price}</span>
+                   )}
+                </div>
+              )}
+              <p className="text-slate-700 text-[15px] leading-relaxed mb-3 whitespace-pre-wrap tracking-wide">{post.content}</p>
+              {isErrand && post.deadline && (
+                <div className="flex items-center text-xs text-orange-500 mb-3 bg-orange-50 w-fit px-2 py-1 rounded-lg">
+                  <Clock size={14} className="mr-1.5" />
+                  <span>截止: {post.deadline}</span>
+                </div>
+              )}
+              {post.images && post.images.length > 0 && (
+                <div className={`grid gap-1.5 mb-3 rounded-2xl overflow-hidden ${post.images.length === 1 ? 'grid-cols-1 max-w-[80%]' : 'grid-cols-3'}`}>
+                  {post.images.map((img, idx) => (
+                    <div key={idx} className={`relative overflow-hidden bg-gray-100 ${post.images?.length === 1 ? 'aspect-video' : 'aspect-square'}`}>
+                        <img src={img} alt="post attachment" className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {post.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {post.tags.map(tag => (
+                    <span key={tag} className="text-xs text-sky-500 bg-sky-50 px-2.5 py-1 rounded-full font-medium">#{tag}</span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-gray-400 text-xs mb-3">
+                 <MapPin size={12} />
+                 <span>学校生活区</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-1">
+              <button onClick={(e) => { e.stopPropagation(); onShare && onShare(); }} className="flex-1 flex items-center justify-center gap-1.5 text-gray-500 hover:text-slate-700 active:scale-95 transition-all border-r border-gray-100">
+                <Share2 size={18} />
+                <span className="text-xs font-medium">{post.shares || '转发'}</span>
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onClick && onClick(); }} className="flex-1 flex items-center justify-center gap-1.5 text-gray-500 hover:text-slate-700 active:scale-95 transition-all border-r border-gray-100">
+                <MessageCircle size={18} />
+                <span className="text-xs font-medium">{post.comments || '评论'}</span>
+              </button>
+              <button onClick={handleLike} className={`flex-1 flex items-center justify-center gap-1.5 active:scale-95 transition-all ${isLiked ? 'text-rose-500' : 'text-gray-500 hover:text-slate-700'}`}>
+                <Heart size={18} className={`${isLiked ? 'fill-current animate-like' : ''}`} />
+                <span className="text-xs font-medium">{likesCount || '赞'}</span>
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const PostDetail = ({ post, onBack, onShare, onOptions }) => {
+        const [commentText, setCommentText] = useState('');
+        const [comments, setComments] = useState([
+          { id: 'c1', user: { id: 'u10', name: '吃瓜群众', avatar: 'https://ui-avatars.com/api/?name=Melon&background=bfdbfe', verified: false }, content: '这也太真实了吧！哈哈哈哈 😂', timestamp: '5分钟前', likes: 12 },
+          { id: 'c2', user: { id: 'u11', name: '学长带带我', avatar: 'https://ui-avatars.com/api/?name=Sen&background=fecaca', verified: true }, content: '蹲一个后续。', timestamp: '1小时前', likes: 3 }
+        ]);
+        const [isLiked, setIsLiked] = useState(false);
+
+        const handleSend = () => {
+          if (!commentText.trim()) return;
+          const newComment = { id: Date.now().toString(), user: { id: 'me', name: '我', avatar: 'https://picsum.photos/200/200', verified: true }, content: commentText, timestamp: '刚刚', likes: 0 };
+          setComments([newComment, ...comments]);
+          setCommentText('');
+        };
+
+        return (
+          <div className="fixed inset-0 bg-white z-[60] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+            <div className="flex items-center justify-between px-4 h-14 border-b border-gray-100 bg-white sticky top-0 z-10">
+              <button onClick={onBack} className="p-2 -ml-2 hover:bg-gray-50 rounded-full text-slate-700"><ArrowLeft size={24} /></button>
+              <div className="flex items-center gap-2">
+                  <img src={post.user.avatar} className="w-8 h-8 rounded-full border border-gray-200" />
+                  <span className="font-bold text-sm text-slate-800">{post.isAnonymous ? '匿名同学' : post.user.name}</span>
+              </div>
+              <button onClick={onOptions} className="p-2 -mr-2 text-slate-600"><MoreHorizontal size={24} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto pb-20 bg-white">
+              <div className="p-5 border-b-8 border-slate-50">
+                <p className="text-base text-slate-800 leading-relaxed whitespace-pre-wrap mb-4 font-normal">{post.content}</p>
+                {post.images && post.images.length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {post.images.map((img, idx) => (<img key={idx} src={img} className="w-full rounded-2xl object-cover shadow-sm" />))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs text-gray-400 mt-6">
+                  <span>{post.timestamp} · 发布于学校生活区</span>
+                  <span>{post.viewCount || 1024} 阅读</span>
+                </div>
+              </div>
+              <div className="p-5">
+                <h3 className="font-bold text-slate-800 mb-6 text-sm">全部评论 ({comments.length})</h3>
+                <div className="space-y-6">
+                  {comments.map(comment => (
+                    <div key={comment.id} className="flex gap-3 items-start">
+                      <img src={comment.user.avatar} className="w-9 h-9 rounded-full object-cover border border-gray-100 flex-shrink-0" />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <span className={`text-sm font-bold ${comment.user.verified ? 'text-sky-600' : 'text-gray-600'}`}>{comment.user.name}</span>
+                          <button className="flex items-center gap-1 text-gray-400"><Heart size={14} /><span className="text-xs">{comment.likes || ''}</span></button>
+                        </div>
+                        <p className="text-slate-700 text-sm mt-1 leading-normal">{comment.content}</p>
+                        <div className="mt-2 flex gap-4 text-xs text-gray-400 font-medium"><span>{comment.timestamp}</span><button className="text-slate-600">回复</button></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 bg-white px-4 py-2 safe-area-bottom flex items-center gap-3 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
+              <div className="flex-1 bg-gray-100 rounded-full flex items-center px-4 py-2">
+                 <input className="bg-transparent flex-1 text-sm outline-none placeholder-gray-400 text-slate-700" placeholder="发一条友善的评论..." value={commentText} onChange={e => setCommentText(e.target.value)} />
+              </div>
+              <button className="text-gray-400 hover:text-sky-500"><ImageIcon size={24} /></button>
+              {commentText.length > 0 ? (
+                 <button onClick={handleSend} className="text-white bg-sky-500 px-4 py-1.5 rounded-full text-sm font-bold shadow-md shadow-sky-200">发送</button>
+              ) : (
+                 <div className="flex items-center gap-4 px-1">
+                   <button onClick={() => setIsLiked(!isLiked)} className={isLiked ? 'text-rose-500' : 'text-gray-400'}><Heart size={26} className={isLiked ? 'fill-current' : ''} /></button>
+                   <button onClick={onShare} className="text-gray-400"><Share2 size={26} /></button>
+                 </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      const ShareModal = ({ onClose }) => {
+        const options = [
+          { icon: MessageCircle, label: '微信好友', color: 'bg-green-500' },
+          { icon: ImageIcon, label: '生成海报', color: 'bg-orange-500' },
+          { icon: Link, label: '复制链接', color: 'bg-blue-500' },
+          { icon: MoreHorizontal, label: '更多', color: 'bg-gray-500' },
+        ];
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-[80] animate-[fadeIn_0.2s_ease-out]" style={{animation: 'fadeIn 0.2s ease-out'}} onClick={onClose}></div>
+            <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-[90] p-6 pb-10 animate-[slideUp_0.3s_ease-out]" style={{animation: 'slideUp 0.3s ease-out'}}>
+              <h3 className="text-center font-bold text-slate-700 mb-6">分享至</h3>
+              <div className="flex justify-between px-4 mb-6">
+                 {options.map((opt, idx) => (
+                   <button key={idx} className="flex flex-col items-center gap-2 active:scale-90 transition-transform">
+                     <div className={`w-14 h-14 ${opt.color} rounded-2xl flex items-center justify-center text-white shadow-md`}><opt.icon size={28} /></div>
+                     <span className="text-xs text-gray-500">{opt.label}</span>
+                   </button>
+                 ))}
+              </div>
+              <button onClick={onClose} className="w-full bg-gray-100 py-3 rounded-2xl font-bold text-gray-500 hover:bg-gray-200">取消</button>
+            </div>
+          </>
+        );
+      };
+
+      const ActionSheet = ({ onClose, isOwner, onDelete }) => {
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-[80] animate-[fadeIn_0.2s_ease-out]" style={{animation: 'fadeIn 0.2s ease-out'}} onClick={onClose}></div>
+            <div className="fixed bottom-0 left-0 right-0 bg-[#f0f4f8] rounded-t-3xl z-[90] overflow-hidden animate-[slideUp_0.3s_ease-out]" style={{animation: 'slideUp 0.3s ease-out'}}>
+              <div className="p-2 space-y-2">
+                 <div className="bg-white rounded-2xl overflow-hidden">
+                   {isOwner ? (
+                      <button onClick={onDelete} className="w-full py-4 text-center font-bold text-rose-500 active:bg-gray-50 border-b border-gray-50 flex items-center justify-center gap-2">
+                        <Trash2 size={18} />删除帖子
+                      </button>
+                   ) : (
+                     <>
+                       <button className="w-full py-4 text-center font-bold text-rose-500 active:bg-gray-50 border-b border-gray-50 flex items-center justify-center gap-2"><Flag size={18} />举报该内容</button>
+                       <button className="w-full py-4 text-center font-medium text-slate-700 active:bg-gray-50 border-b border-gray-50 flex items-center justify-center gap-2"><EyeOff size={18} />不感兴趣</button>
+                     </>
+                   )}
+                   <button className="w-full py-4 text-center font-medium text-slate-700 active:bg-gray-50 flex items-center justify-center gap-2"><Copy size={18} />复制内容</button>
+                 </div>
+                 <button onClick={onClose} className="w-full bg-white py-4 rounded-2xl font-bold text-slate-700 active:bg-gray-50">取消</button>
+              </div>
+            </div>
+          </>
+        );
+      };
+
+      const ChatDetail = ({ chat, onBack }) => {
+        const [messageText, setMessageText] = useState('');
+        const [history, setHistory] = useState([{ id: 'h1', text: chat.content, isMe: false, time: chat.time }]);
+        const scrollRef = useRef(null);
+
+        useEffect(() => {
+          if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }, [history]);
+
+        const handleSend = () => {
+          if (!messageText.trim()) return;
+          setHistory([...history, { id: Date.now().toString(), text: messageText, isMe: true, time: '刚刚' }]);
+          setMessageText('');
+          setTimeout(() => {
+              setHistory(prev => [...prev, { id: Date.now().toString(), text: '好的，没问题！👌', isMe: false, time: '刚刚' }]);
+          }, 1500);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-[#f0f4f8] z-[60] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+            <div className="bg-white px-4 h-14 flex items-center justify-between border-b border-gray-100 shadow-sm z-10">
+              <div className="flex items-center gap-3">
+                <button onClick={onBack} className="p-2 -ml-2 text-slate-700 hover:bg-gray-50 rounded-full"><ArrowLeft size={24} /></button>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                      <img src={chat.avatar} className="w-8 h-8 rounded-full border border-gray-200" />
+                      <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+                  </div>
+                  <span className="font-bold text-slate-800">{chat.sender}</span>
+                </div>
+              </div>
+              <div className="flex gap-4 text-slate-600"><Phone size={20} /><Video size={20} /><MoreHorizontal size={20} /></div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+              <div className="text-center text-xs text-gray-300 py-4">{chat.time}</div>
+              {history.map(msg => (
+                <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'}`}>
+                   {!msg.isMe && <img src={chat.avatar} className="w-8 h-8 rounded-full mr-2 self-end border border-white" />}
+                   <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl text-[15px] leading-relaxed shadow-sm ${msg.isMe ? 'bg-sky-500 text-white rounded-tr-none' : 'bg-white text-slate-700 rounded-tl-none'}`}>
+                     {msg.text}
+                   </div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white px-4 py-2 safe-area-bottom border-t border-gray-100 flex items-end gap-3">
+              <button className="p-2 text-gray-400 mb-0.5"><Plus size={24} /></button>
+              <div className="flex-1 bg-gray-100 rounded-2xl min-h-[40px] px-3 py-2 mb-1">
+                <textarea rows={1} className="w-full bg-transparent outline-none text-slate-700 text-sm resize-none" placeholder="发消息..." value={messageText} onChange={(e) => setMessageText(e.target.value)} />
+              </div>
+              <button className="p-2 text-gray-400 mb-0.5"><Smile size={24} /></button>
+              {messageText.trim().length > 0 && (<button onClick={handleSend} className="p-2 bg-sky-500 text-white rounded-full mb-1 shadow-md animate-in zoom-in"><Send size={18} /></button>)}
+            </div>
+          </div>
+        );
+      };
+
+      const EditProfile = ({ user, onSave, onCancel }) => {
+        const [name, setName] = useState(user.name);
+        const [bio, setBio] = useState(user.bio || '');
+        const [department, setDepartment] = useState(user.department || '');
+
+        return (
+          <div className="fixed inset-0 bg-[#f8fafc] z-[70] flex flex-col animate-[slideUp_0.3s_ease-out]" style={{animation: 'slideUp 0.3s ease-out'}}>
+            <div className="bg-white px-4 h-14 flex items-center justify-between border-b border-gray-100">
+              <button onClick={onCancel} className="text-slate-600 font-medium text-sm">取消</button>
+              <span className="font-bold text-slate-800">编辑资料</span>
+              <button onClick={() => onSave({ name, bio, department })} className="bg-sky-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-md shadow-sky-200">保存</button>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-col items-center mb-8">
+                 <div className="relative">
+                    <img src={user.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md object-cover" />
+                    <button className="absolute bottom-0 right-0 bg-slate-800 text-white p-2 rounded-full shadow-lg border-2 border-white"><Camera size={16} /></button>
+                 </div>
+                 <p className="mt-3 text-xs text-gray-400">点击更换头像</p>
+              </div>
+              <div className="space-y-4">
+                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+                   <label className="block text-xs font-bold text-gray-400 mb-1">昵称</label>
+                   <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full font-bold text-slate-800 outline-none text-base bg-transparent" />
+                 </div>
+                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+                   <label className="block text-xs font-bold text-gray-400 mb-1">个性签名</label>
+                   <textarea value={bio} onChange={(e) => setBio(e.target.value)} className="w-full text-slate-700 outline-none text-sm bg-transparent resize-none h-16" placeholder="介绍一下自己吧..." />
+                 </div>
+                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50 flex items-center justify-between">
+                   <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-1">学院/专业</label>
+                      <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)} className="w-full font-medium text-slate-800 outline-none text-sm bg-transparent" />
+                   </div>
+                 </div>
+                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50 flex items-center justify-between opacity-60">
+                   <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-1">认证学校</label>
+                      <div className="font-bold text-slate-800">{user.school || '未认证'}</div>
+                   </div>
+                   <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">不可修改</span>
+                 </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const MessageListDetail = ({ type, onBack }) => {
+        const isLike = type === 'LIKES';
+        return (
+          <div className="fixed inset-0 bg-[#f8fafc] z-[60] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+            <div className="bg-white px-4 h-14 flex items-center gap-3 border-b border-gray-100">
+              <button onClick={onBack} className="p-2 -ml-2 hover:bg-gray-50 rounded-full"><ArrowLeft size={24} className="text-slate-700" /></button>
+              <span className="font-bold text-slate-800 text-lg">{isLike ? '收到的赞' : '评论回复'}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+               {[1, 2, 3].map((i) => (
+                 <div key={i} className="bg-white p-4 rounded-2xl mb-3 shadow-sm flex gap-3">
+                    <img src={`https://picsum.photos/50/${50 + i}`} className="w-10 h-10 rounded-full object-cover" />
+                    <div className="flex-1">
+                       <div className="flex justify-between items-start mb-1">
+                          <span className="font-bold text-slate-700 text-sm">某同学 {i}</span>
+                          <span className="text-xs text-gray-400">10:2{i}</span>
+                       </div>
+                       <div className="text-sm text-gray-600 mb-2">{isLike ? '赞了你的帖子' : '回复了你：确实，我也觉得学校食堂的饭挺好吃的！'}</div>
+                       <div className="bg-gray-50 p-2 rounded-lg flex items-center gap-2">
+                          {isLike && <div className="w-8 h-8 bg-gray-200 rounded-md flex-shrink-0"></div>}
+                          <div className="text-xs text-gray-400 truncate">{isLike ? '帖子内容预览...' : '你的评论：二食堂的红烧肉一绝...'}</div>
+                       </div>
+                    </div>
+                 </div>
+               ))}
+            </div>
+          </div>
+        );
+      };
+
+      // --- SCREENS ---
+
+      const Home = ({ posts, onPostClick, onNotificationClick, onShare, onOptions, onBannerClick }) => {
+        const [activeCategory, setActiveCategory] = useState('推荐');
+        const [isSearchOpen, setIsSearchOpen] = useState(false);
+        const [searchText, setSearchText] = useState('');
+        const categories = ['推荐', '关注', '失物', '表白', '问答', '活动', '社团'];
+        const filteredPosts = posts.filter(post => {
+            if (isSearchOpen && searchText) return post.content.includes(searchText) || post.tags.some(t => t.includes(searchText));
+            if (activeCategory === '推荐' || activeCategory === '关注') return true;
+            return post.category === activeCategory;
+        });
+
+        return (
+          <div className="pb-4 min-h-full">
+            <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm">
+              <div className="px-4 py-3 flex items-center gap-3">
+                 <div onClick={() => setIsSearchOpen(true)} className="flex-1 bg-[#f1f5f9] rounded-full flex items-center px-3 py-2 transition-all active:scale-95">
+                    <Search className="text-gray-400 w-4 h-4 mr-2" />
+                    <span className="text-sm text-gray-400 truncate">搜“高数笔记”、“二手书”</span>
+                 </div>
+                 <button onClick={onNotificationClick} className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
+                     <Bell className="text-slate-600" size={24} /><span className="absolute top-2 right-2.5 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>
+                  </button>
+              </div>
+              <div className="flex overflow-x-auto no-scrollbar gap-6 px-4 pb-0 border-b border-gray-100">
+                {categories.map(cat => (
+                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`whitespace-nowrap text-[15px] pb-3 transition-all relative ${activeCategory === cat ? 'text-sky-600 font-extrabold scale-105' : 'text-gray-400 font-medium'}`}>
+                    {cat}
+                    {activeCategory === cat && (<div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-1 bg-sky-500 rounded-full"></div>)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="pt-3">
+              {activeCategory === '推荐' && !isSearchOpen && (
+                <div onClick={onBannerClick} className="mx-3 mb-4 bg-gradient-to-r from-sky-400 to-indigo-400 rounded-3xl p-4 text-white shadow-lg shadow-sky-200 flex items-center justify-between active:scale-95 transition-transform cursor-pointer">
+                  <div><div className="font-bold text-lg mb-1">校园歌手大赛 🎤</div><div className="text-xs opacity-90 bg-white/20 px-2 py-0.5 rounded-full w-fit">火热报名中</div></div>
+                  <Sparkles className="text-yellow-300 w-8 h-8 opacity-80" />
+                </div>
+              )}
+              {filteredPosts.length > 0 ? (filteredPosts.map(post => (<PostCard key={post.id} post={post} onClick={() => onPostClick(post)} onShare={() => onShare(post)} onOptions={() => onOptions(post)} />))) : (<div className="text-center py-20"><div className="text-4xl mb-2">🍃</div><p className="text-gray-400 text-sm">暂无内容，去发一条吧！</p></div>)}
+            </div>
+            {isSearchOpen && (
+              <div className="fixed inset-0 z-[60] bg-[#f0f4f8] flex flex-col animate-[fadeIn_0.2s_ease-out]" style={{animation: 'fadeIn 0.2s ease-out'}}>
+                 <div className="bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
+                   <div className="flex-1 bg-[#f1f5f9] rounded-full flex items-center px-3 py-2">
+                      <Search className="text-gray-400 w-4 h-4 mr-2" />
+                      <input autoFocus type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="搜索帖子、用户、商品..." className="bg-transparent text-sm w-full outline-none placeholder-gray-400 text-slate-700" />
+                   </div>
+                   <button onClick={() => { setIsSearchOpen(false); setSearchText(''); }} className="text-slate-600 font-bold text-sm">取消</button>
+                 </div>
+                 {!searchText && (
+                   <div className="p-5">
+                     <h3 className="font-bold text-slate-700 mb-4 text-sm">历史搜索</h3>
+                     <div className="flex flex-wrap gap-2">{['二手教材', '校园卡', '家教', '羽毛球'].map(tag => (<button key={tag} onClick={() => setSearchText(tag)} className="bg-white px-3 py-1.5 rounded-full text-xs text-gray-500 border border-gray-100">{tag}</button>))}</div>
+                   </div>
+                 )}
+                 {searchText && (
+                    <div className="flex-1 overflow-y-auto pt-3">
+                       {filteredPosts.length > 0 ? (filteredPosts.map(post => (<PostCard key={post.id} post={post} onClick={() => onPostClick(post)} onShare={() => onShare(post)} onOptions={() => onOptions(post)} />))) : (<div className="text-center py-20 text-gray-400 text-sm">未找到相关内容</div>)}
+                    </div>
+                 )}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      const Market = ({ posts, onPostClick, onQuickPublish, onShare, onOptions }) => {
+        const [viewType, setViewType] = useState('ALL');
+        return (
+          <div className="pb-24 min-h-screen bg-[#f0f4f8]">
+            <div className="bg-white px-5 py-3 sticky top-0 z-40 shadow-sm rounded-b-3xl">
+              <div className="flex items-center justify-between mb-4 mt-1">
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight">校友集市</h1>
+                <div className="flex bg-slate-100 p-1 rounded-full">
+                   <button onClick={() => setViewType('ALL')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${viewType === 'ALL' ? 'bg-white shadow text-slate-800' : 'text-gray-400'}`}>全部</button>
+                   <button onClick={() => setViewType('TRADE')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${viewType === 'TRADE' ? 'bg-emerald-400 text-white shadow shadow-emerald-200' : 'text-gray-400'}`}>闲置</button>
+                   <button onClick={() => setViewType('ERRAND')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${viewType === 'ERRAND' ? 'bg-orange-400 text-white shadow shadow-orange-200' : 'text-gray-400'}`}>跑腿</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                 <button onClick={() => onQuickPublish(PostType.TRADE)} className="bg-[#ecfdf5] p-3 rounded-2xl flex items-center gap-3 active:scale-95 transition-transform border border-emerald-100">
+                    <div className="bg-white p-2.5 rounded-full text-emerald-500 shadow-sm"><ShoppingBag size={20} /></div>
+                    <div className="text-left"><div className="font-extrabold text-slate-700 text-sm">发布闲置</div><div className="text-[10px] text-emerald-600/70 font-medium">宿舍好物回血</div></div>
+                 </button>
+                 <button onClick={() => onQuickPublish(PostType.ERRAND)} className="bg-[#fff7ed] p-3 rounded-2xl flex items-center gap-3 active:scale-95 transition-transform border border-orange-100">
+                    <div className="bg-white p-2.5 rounded-full text-orange-500 shadow-sm"><Zap size={20} /></div>
+                    <div className="text-left"><div className="font-extrabold text-slate-700 text-sm">发布跑腿</div><div className="text-[10px] text-orange-600/70 font-medium">代拿/代买/急送</div></div>
+                 </button>
+              </div>
+            </div>
+            <div className="mx-4 mt-3 bg-indigo-50/80 border border-indigo-100 rounded-xl p-2.5 flex items-center gap-2">
+               <ShieldCheck size={16} className="text-indigo-500" /><span className="text-xs text-indigo-800 font-medium">交易请优先选择<span className="font-bold underline">线下当面</span>方式</span>
+            </div>
+            <div className="pt-3">
+              {posts.filter(p => {
+                if (viewType === 'ALL') return p.type === PostType.TRADE || p.type === PostType.ERRAND;
+                if (viewType === 'TRADE') return p.type === PostType.TRADE;
+                if (viewType === 'ERRAND') return p.type === PostType.ERRAND;
+                return true;
+              }).map(post => (<PostCard key={post.id} post={post} onClick={() => onPostClick(post)} onShare={() => onShare(post)} onOptions={() => onOptions(post)} />))}
+            </div>
+          </div>
+        );
+      };
+
+      const Publish = ({ onCancel, onSubmit, initialType }) => {
+        const [postType, setPostType] = useState(initialType || PostType.SOCIAL);
+        const [isAnonymous, setIsAnonymous] = useState(false);
+        const [content, setContent] = useState('');
+        const [price, setPrice] = useState('');
+        const [deadline, setDeadline] = useState('');
+
+        const handleSubmit = () => {
+          if (!content.trim()) return;
+          onSubmit({ type: postType, content: content, isAnonymous: isAnonymous, price: price ? Number(price) : undefined, deadline: deadline });
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex flex-col bg-white animate-[slideUp_0.3s_ease-out]" style={{animation: 'slideUp 0.3s ease-out'}}>
+            <div className="flex items-center justify-between px-5 py-4 bg-white">
+              <button onClick={onCancel} className="text-gray-500 hover:bg-gray-100 p-2 rounded-full transition-colors"><X size={24} /></button>
+              <button onClick={handleSubmit} className={`px-6 py-2 rounded-full text-sm font-bold text-white transition-all shadow-md ${content.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200 active:scale-95' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`} disabled={content.length === 0}>发布</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 pb-10">
+              <div className="flex gap-3 mb-8 overflow-x-auto no-scrollbar py-1">
+                {[{ id: PostType.SOCIAL, label: '日常动态' }, { id: PostType.LOST_FOUND, label: '失物招领' }, { id: PostType.TRADE, label: '闲置转让' }, { id: PostType.ERRAND, label: '跑腿求助' }].map((type) => (
+                  <button key={type.id} onClick={() => setPostType(type.id)} className={`flex-shrink-0 px-5 py-2.5 rounded-2xl text-sm font-bold border transition-all duration-200 ${postType === type.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>{type.label}</button>
+                ))}
+              </div>
+              <div className="relative mb-6">
+                <textarea className="w-full min-h-[160px] text-lg text-gray-800 placeholder-gray-300 focus:outline-none resize-none leading-relaxed" placeholder={postType === PostType.ERRAND ? "需要帮忙带什么？送到哪里？..." : postType === PostType.TRADE ? "描述一下宝贝的成色、入手渠道..." : "分享当下的新鲜事..."} value={content} onChange={(e) => setContent(e.target.value)} autoFocus></textarea>
+              </div>
+              {(postType === PostType.TRADE || postType === PostType.ERRAND) && (
+                <div className="bg-gray-50 p-5 rounded-3xl mb-6 space-y-4 border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-gray-700">{postType === PostType.TRADE ? '出售价格' : '悬赏金额'}</label>
+                    <div className="flex items-center bg-white rounded-xl px-3 py-2 border border-gray-200 focus-within:border-indigo-500"><span className="text-gray-900 font-bold mr-1">¥</span><input type="number" placeholder="0.00" value={price} onChange={(e) => setPrice(e.target.value)} className="w-20 text-right bg-transparent outline-none font-bold text-gray-900 placeholder-gray-300" /></div>
+                  </div>
+                  {postType === PostType.ERRAND && (
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-200/50">
+                      <label className="text-sm font-bold text-gray-700">截止时间</label>
+                      <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-600 focus:outline-none focus:border-indigo-500" />
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-3 mb-8 overflow-x-auto">
+                <div className="w-24 h-24 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 active:bg-gray-100 transition-colors flex-shrink-0"><ImageIcon size={24} /><span className="text-[10px] font-medium mt-1">照片/视频</span></div>
+              </div>
+              <div className="space-y-1">
+                <button className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl active:bg-gray-100 transition-colors">
+                   <div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-full text-indigo-600"><MapPin size={18} /></div><span className="text-sm font-medium text-gray-700">所在位置</span></div>
+                   <div className="flex items-center gap-2"><span className="text-xs text-indigo-500 font-medium">生活区</span><ChevronRight size={16} className="text-gray-300" /></div>
+                </button>
+                <button className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl active:bg-gray-100 transition-colors" onClick={() => setIsAnonymous(!isAnonymous)}>
+                   <div className="flex items-center gap-3"><div className={`p-2 rounded-full transition-colors ${isAnonymous ? 'bg-purple-100 text-purple-600' : 'bg-gray-200 text-gray-500'}`}>{isAnonymous ? <EyeOff size={18} /> : <Eye size={18} />}</div><span className="text-sm font-medium text-gray-700">匿名发布</span></div>
+                   <div className={`w-11 h-6 rounded-full transition-colors relative ${isAnonymous ? 'bg-purple-500' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${isAnonymous ? 'left-6' : 'left-1'}`}></div></div>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const Messages = ({ onChatClick, onViewLikes, onViewComments }) => {
+        const MOCK_MESSAGES = [
+          { id: '1', sender: '系统通知', content: '恭喜！您的“寻物启事”帖子已通过审核。', time: '09:41', unread: true, avatar: 'https://ui-avatars.com/api/?name=System&background=6366f1&color=fff&bold=true' },
+          { id: '2', sender: '张伟', content: '同学你好，请问那个键盘还在吗？', time: '昨天', unread: false, avatar: 'https://picsum.photos/101/101' }
+        ];
+        return (
+          <div className="pb-4 min-h-full">
+            <div className="bg-white sticky top-0 z-40 px-5 py-4 shadow-sm/50 rounded-b-3xl"><h1 className="font-extrabold text-xl text-gray-900">消息中心</h1></div>
+            <div className="grid grid-cols-2 gap-3 px-4 mt-4 mb-6">
+               <button onClick={onViewLikes} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 active:scale-95 transition-transform">
+                  <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center"><Heart size={24} className="fill-current" /></div>
+                  <div className="text-left"><div className="font-bold text-gray-800 text-sm">收到的赞</div><div className="text-[10px] text-gray-400">查看详情</div></div>
+               </button>
+               <button onClick={onViewComments} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 active:scale-95 transition-transform">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center"><MessageCircle size={24} className="fill-current" /></div>
+                   <div className="text-left"><div className="font-bold text-gray-800 text-sm">评论回复</div><div className="text-[10px] text-gray-400">查看详情</div></div>
+               </button>
+            </div>
+            <div className="px-4 space-y-3">
+              {MOCK_MESSAGES.map(msg => (
+                <div key={msg.id} onClick={() => onChatClick && onChatClick(msg)} className="bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 active:bg-gray-50 transition-colors cursor-pointer">
+                  <div className="relative flex-shrink-0"><img src={msg.avatar} alt={msg.sender} className="w-14 h-14 rounded-full object-cover border border-gray-100" />{msg.unread && <div className="absolute top-0 right-0 w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white"></div>}</div>
+                  <div className="flex-1 min-w-0"><div className="flex justify-between items-center mb-1"><h3 className="font-bold text-gray-900 truncate text-sm">{msg.sender}</h3><span className={`text-[10px] ${msg.unread ? 'text-indigo-500 font-bold' : 'text-gray-400'}`}>{msg.time}</span></div><p className={`text-xs truncate ${msg.unread ? 'text-gray-800 font-medium' : 'text-gray-500'}`}>{msg.content}</p></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      };
+
+      const Profile = ({ user, postCount, onSettings, onEdit, onMenuClick, onStatsClick }) => {
+        const ACTIVITY_DATA = [ { day: '一', value: 4 }, { day: '二', value: 7 }, { day: '三', value: 3 }, { day: '四', value: 8 }, { day: '五', value: 12 }, { day: '六', value: 6 }, { day: '日', value: 10 } ];
+        return (
+          <div className="pb-4 min-h-full">
+            <div className="bg-white rounded-b-[2.5rem] px-6 pt-10 pb-8 shadow-sm mb-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-full -z-0"></div>
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex gap-4 items-center" onClick={onEdit}>
+                    <div className="relative"><img src={user.avatar} alt="Avatar" className="w-20 h-20 rounded-full border-4 border-white shadow-lg object-cover" /><div className="absolute bottom-0 right-0 w-6 h-6 bg-green-500 border-4 border-white rounded-full"></div></div>
+                    <div><h2 className="text-2xl font-extrabold text-gray-900">{user.name}</h2><div className="text-sm text-gray-500 mt-1 line-clamp-1 max-w-[150px]">{user.bio || '这个人很懒，什么都没写'}</div><div className="flex items-center gap-2 mt-2"><span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">ID: 20238899</span>{user.verified && <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">已实名</span>}</div></div>
+                  </div>
+                  <button onClick={onSettings} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-600"><Lucide.Settings size={20} /></button>
+                </div>
+                <div className="flex justify-between items-center bg-gray-50 rounded-2xl p-4">
+                  <button onClick={() => onStatsClick('MY_POSTS')} className="flex-1 text-center border-r border-gray-200 active:opacity-50 transition-opacity"><div className="text-xl font-extrabold text-gray-900">{postCount}</div><div className="text-xs text-gray-500 font-medium mt-1">发布</div></button>
+                  <button onClick={() => onStatsClick('FOLLOWING')} className="flex-1 text-center border-r border-gray-200 active:opacity-50 transition-opacity"><div className="text-xl font-extrabold text-gray-900">34</div><div className="text-xs text-gray-500 font-medium mt-1">关注</div></button>
+                  <button onClick={() => onStatsClick('FANS')} className="flex-1 text-center active:opacity-50 transition-opacity"><div className="text-xl font-extrabold text-gray-900">128</div><div className="text-xs text-gray-500 font-medium mt-1">粉丝</div></button>
+                </div>
+              </div>
+            </div>
+            <div className="px-4 space-y-4">
+              {user.school && (
+                <div className="bg-gradient-to-r from-sky-400 to-indigo-500 p-4 rounded-3xl shadow-lg shadow-sky-100 text-white flex justify-between items-center">
+                   <div><div className="text-xs opacity-80 mb-1">当前认证学校</div><div className="font-bold text-lg">{user.school}</div><div className="text-xs opacity-80 mt-1">{user.department}</div></div><Shield size={32} className="opacity-20" />
+                </div>
+              )}
+              <div className="bg-white p-5 rounded-3xl shadow-sm">
+                <div className="flex items-center justify-between mb-4"><h3 className="text-sm font-bold text-gray-800">本周活跃</h3><span className="text-xs text-gray-400">Total: 50</span></div>
+                <div className="h-32 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ACTIVITY_DATA}>
+                      <XAxis dataKey="day" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} dy={5} />
+                      <Tooltip cursor={{fill: '#f1f5f9', radius: 4}} contentStyle={{fontSize: '12px', borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}} />
+                      <Bar dataKey="value" radius={[6, 6, 6, 6]} barSize={24}>{ACTIVITY_DATA.map((entry, index) => (<Cell key={`cell-${index}`} fill={index === 4 ? '#6366f1' : '#e2e8f0'} />))}</Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="bg-white rounded-3xl shadow-sm overflow-hidden mb-8">
+                  <button onClick={() => onMenuClick('MY_POSTS')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 transition-colors border-b border-gray-50 cursor-pointer"><div className="flex items-center gap-4"><div className="p-2.5 rounded-xl bg-blue-50 text-blue-500"><Lucide.FileText size={20} /></div><span className="text-sm font-bold text-gray-700">我的发布</span></div><ChevronRight size={16} className="text-gray-300" /></button>
+                  <button onClick={() => onMenuClick('MY_TRADES')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 transition-colors border-b border-gray-50 cursor-pointer"><div className="flex items-center gap-4"><div className="p-2.5 rounded-xl bg-orange-50 text-orange-500"><ShoppingBag size={20} /></div><span className="text-sm font-bold text-gray-700">我的交易</span></div><ChevronRight size={16} className="text-gray-300" /></button>
+                   <button onClick={() => onMenuClick('MY_REPORTS')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 transition-colors border-b border-gray-50 cursor-pointer"><div className="flex items-center gap-4"><div className="p-2.5 rounded-xl bg-rose-50 text-rose-500"><AlertCircle size={20} /></div><span className="text-sm font-bold text-gray-700">我的举报及反馈</span></div><ChevronRight size={16} className="text-gray-300" /></button>
+                  <button onClick={() => onMenuClick('VERIFY')} className="w-full flex items-center justify-between p-4 active:bg-gray-50 transition-colors cursor-pointer"><div className="flex items-center gap-4"><div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-500"><Shield size={20} /></div><span className="text-sm font-bold text-gray-700">实名认证</span></div><div className="flex items-center gap-2"><span className="text-xs text-gray-400 font-medium">已认证</span><ChevronRight size={16} className="text-gray-300" /></div></button>
+              </div>
+              <div className="pt-2 pb-6 text-center"><span className="text-[10px] text-gray-300 font-mono">Build v1.1.2 • Made with ❤️ for Students</span></div>
+            </div>
+          </div>
+        );
+      };
+
+      const Login = ({ onLogin }) => {
+        const [loginMethod, setLoginMethod] = useState('PASSWORD');
+        const [isLoading, setIsLoading] = useState(false);
+        const [username, setUsername] = useState('');
+        const [password, setPassword] = useState('');
+        const handleLogin = (e) => { e.preventDefault(); if (!username || !password) return; setIsLoading(true); setTimeout(() => { setIsLoading(false); onLogin(); }, 1000); };
+        return (
+          <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 relative overflow-hidden">
+            <div className="absolute top-[-20%] right-[-20%] w-80 h-80 bg-indigo-100 rounded-full blur-3xl opacity-50"></div>
+            <div className="absolute bottom-[-10%] left-[-10%] w-60 h-60 bg-purple-100 rounded-full blur-3xl opacity-50"></div>
+            <div className="w-full max-w-sm z-10">
+              <div className="text-center mb-10">
+                <div className="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-200 mb-6 transform rotate-3"><Lucide.School className="text-white w-10 h-10" /></div>
+                <h1 className="text-2xl font-bold text-gray-900 mb-2">欢迎回到校友圈</h1>
+                <p className="text-gray-500 text-sm">连接每一位校友，分享校园生活</p>
+              </div>
+              <div className="flex mb-6 bg-gray-100 p-1 rounded-xl">
+                 <button onClick={() => setLoginMethod('PASSWORD')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${loginMethod === 'PASSWORD' ? 'bg-white shadow text-slate-800' : 'text-gray-400'}`}>密码登录</button>
+                 <button onClick={() => setLoginMethod('CODE')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${loginMethod === 'CODE' ? 'bg-white shadow text-slate-800' : 'text-gray-400'}`}>验证码登录</button>
+              </div>
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="group bg-gray-50 border border-gray-100 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-100 rounded-2xl p-1 transition-all">
+                  <div className="flex items-center px-3"><User className="text-gray-400 w-5 h-5 mr-3" /><input type="text" placeholder="手机号 / 学号" value={username} onChange={(e) => setUsername(e.target.value)} className="flex-1 bg-transparent py-3 outline-none text-gray-800 placeholder-gray-400" /></div>
+                </div>
+                <div className="group bg-gray-50 border border-gray-100 focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-100 rounded-2xl p-1 transition-all">
+                  <div className="flex items-center px-3">
+                    {loginMethod === 'PASSWORD' ? <Lock className="text-gray-400 w-5 h-5 mr-3" /> : <Smartphone className="text-gray-400 w-5 h-5 mr-3" />}
+                    <input type={loginMethod === 'PASSWORD' ? "password" : "text"} placeholder={loginMethod === 'PASSWORD' ? "请输入密码" : "请输入验证码"} value={password} onChange={(e) => setPassword(e.target.value)} className="flex-1 bg-transparent py-3 outline-none text-gray-800 placeholder-gray-400" />
+                  </div>
+                </div>
+                <button type="submit" disabled={isLoading || !username || !password} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50">
+                  {isLoading ? (<div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>) : (<><span>登录</span><ArrowRight size={18} /></>)}
+                </button>
+              </form>
+              <div className="mt-8 text-center"><p className="text-gray-400 text-xs">登录即代表同意 <span className="text-indigo-500">用户协议</span> 和 <span className="text-indigo-500">隐私政策</span></p></div>
+            </div>
+          </div>
+        );
+      };
+
+      const SchoolSelect = ({ onConfirm }) => {
+        const [searchTerm, setSearchTerm] = useState('');
+        const [selectedSchool, setSelectedSchool] = useState('');
+        const [step, setStep] = useState(1);
+        const SCHOOL_LIST = ["福建商学院", "北京大学", "清华大学", "复旦大学", "上海交通大学", "浙江大学", "南京大学", "武汉大学", "中山大学", "厦门大学", "福州大学"];
+        return (
+          <div className="h-screen bg-white flex flex-col p-6 animate-[fadeIn_0.5s_ease-out]" style={{animation: 'fadeIn 0.5s ease-out'}}>
+            {step === 1 && (
+              <>
+                <div className="mt-10 mb-8"><h1 className="text-2xl font-black text-slate-800 mb-2">选择你的学校</h1><p className="text-gray-400 text-sm">我们会根据学校为你推送相关的校园动态</p></div>
+                <div className="relative mb-6"><Search className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" /><input type="text" className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3 pl-12 pr-4 text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-200 transition-all" placeholder="搜索福建商学院..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                <div className="flex-1 overflow-y-auto no-scrollbar">
+                  <h3 className="text-xs font-bold text-gray-400 mb-4 tracking-wider">可能感兴趣</h3>
+                  <div className="flex flex-col gap-2">
+                    {SCHOOL_LIST.filter(s => s.includes(searchTerm)).map(school => (
+                      <button key={school} onClick={() => {setSelectedSchool(school); setSearchTerm(school);}} className={`p-4 rounded-2xl text-sm font-bold text-left transition-all flex items-center gap-3 ${selectedSchool === school ? 'bg-sky-500 text-white shadow-lg shadow-sky-200' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}><Lucide.School size={18} />{school}{selectedSchool === school && <CheckCircle size={18} className="ml-auto" />}</button>
+                    ))}
+                  </div>
+                </div>
+                <button disabled={!selectedSchool} onClick={() => setStep(2)} className="mt-4 w-full bg-slate-800 text-white font-bold py-4 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-all flex items-center justify-center gap-2">下一步<ArrowRight size={18} /></button>
+              </>
+            )}
+            {step === 2 && (
+              <>
+                <div className="mt-10 mb-8"><h1 className="text-2xl font-black text-slate-800 mb-2">身份认证</h1><p className="text-gray-400 text-sm">为了构建真实的校园社区，请验证你的身份</p></div>
+                <div className="bg-gradient-to-br from-sky-400 to-indigo-500 rounded-3xl p-6 text-white shadow-xl shadow-sky-200 mb-8 relative overflow-hidden">
+                   <div className="flex items-center gap-3 mb-6 relative z-10"><div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"><Lucide.School size={24} /></div><div><div className="text-xs opacity-80">当前选择</div><div className="font-bold text-lg">{selectedSchool}</div></div></div>
+                   <div className="space-y-4 relative z-10">
+                     <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10"><label className="text-xs text-indigo-100 block mb-1">学号 / 教工号</label><input type="text" defaultValue="20230001" className="bg-transparent w-full outline-none font-mono font-bold" /></div>
+                     <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10"><label className="text-xs text-indigo-100 block mb-1">统一身份认证密码</label><input type="password" value="********" readOnly className="bg-transparent w-full outline-none font-mono font-bold" /></div>
+                   </div>
+                </div>
+                <button onClick={() => setTimeout(() => onConfirm(selectedSchool), 500)} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-sky-200 active:scale-95 transition-all">确认并进入校园</button>
+              </>
+            )}
+          </div>
+        );
+      };
+
+      const Settings = ({ onBack, onLogout }) => {
+        const [currentView, setCurrentView] = useState('MAIN');
+        const [isDarkMode, setIsDarkMode] = useState(false);
+        const renderContent = () => {
+          switch (currentView) {
+            case 'ACCOUNT':
+              return (
+                <div className="p-4 space-y-4 animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+                   <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                      <div className="p-4 border-b border-gray-50 flex justify-between items-center"><span className="text-sm font-medium text-slate-700">手机号</span><span className="text-sm text-gray-400">138****8888</span></div>
+                      <div className="p-4 border-b border-gray-50 flex justify-between items-center"><span className="text-sm font-medium text-slate-700">微信绑定</span><span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded">已绑定</span></div>
+                      <div className="p-4 flex justify-between items-center active:bg-gray-50"><span className="text-sm font-medium text-slate-700">修改密码</span><ChevronRight size={16} className="text-gray-300" /></div>
+                   </div>
+                   <div className="bg-white rounded-2xl overflow-hidden shadow-sm p-4 flex items-center gap-3 text-slate-700"><Shield size={18} className="text-emerald-500" /><span className="text-sm font-medium">账号状态正常</span></div>
+                </div>
+              );
+            case 'NOTIFICATIONS':
+              return (
+                <div className="p-4 space-y-4 animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+                   <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                      {['互动通知', '系统通知', '活动推送'].map((item, i) => (<div key={i} className="p-4 flex justify-between items-center border-b border-gray-50 last:border-0"><span className="text-sm font-medium text-slate-700">{item}</span><div className="w-10 h-6 bg-indigo-500 rounded-full relative"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 shadow-sm"></div></div></div>))}
+                   </div>
+                </div>
+              );
+            case 'PRIVACY':
+              return (
+                <div className="p-4 space-y-4 animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+                   <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                      <div className="p-4 flex justify-between items-center border-b border-gray-50"><span className="text-sm font-medium text-slate-700">允许陌生人查看主页</span><div className="w-10 h-6 bg-indigo-500 rounded-full relative"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 shadow-sm"></div></div></div>
+                      <div className="p-4 flex justify-between items-center border-b border-gray-50"><span className="text-sm font-medium text-slate-700">向我推荐通讯录好友</span><div className="w-10 h-6 bg-gray-200 rounded-full relative"><div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 shadow-sm"></div></div></div>
+                      <button onClick={() => setCurrentView('BLOCK_LIST')} className="w-full p-4 flex justify-between items-center active:bg-gray-50"><span className="text-sm font-medium text-slate-700">黑名单管理</span><ChevronRight size={16} className="text-gray-300" /></button>
+                   </div>
+                </div>
+              );
+            case 'BLOCK_LIST':
+              return (
+                <div className="flex flex-col items-center justify-center pt-24 animate-[slideRight_0.3s_ease-out] px-10 text-center" style={{animation: 'slideRight 0.3s ease-out'}}>
+                   <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-6 text-gray-300"><Ghost size={48} strokeWidth={1.5} /></div>
+                   <p className="text-slate-700 font-bold mb-2">暂无黑名单用户</p>
+                   <p className="text-gray-400 text-xs leading-relaxed">当你将用户加入黑名单后，他们将无法查看你的动态或向你发送消息。</p>
+                </div>
+              );
+            default:
+              return (
+                <div className="p-4 space-y-4">
+                  <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                    <button onClick={() => setCurrentView('ACCOUNT')} className="w-full p-4 flex items-center justify-between border-b border-gray-50 active:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><Lock size={20} className="text-gray-400" /><span className="text-sm font-medium text-slate-700">账号与安全</span></div><ChevronRight size={18} className="text-gray-300" /></button>
+                    <button onClick={() => setCurrentView('NOTIFICATIONS')} className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><Bell size={20} className="text-gray-400" /><span className="text-sm font-medium text-slate-700">消息通知</span></div><ChevronRight size={18} className="text-gray-300" /></button>
+                  </div>
+                  <div className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                    <div className="p-4 flex items-center justify-between border-b border-gray-50"><div className="flex items-center gap-3"><Moon size={20} className="text-gray-400" /><span className="text-sm font-medium text-slate-700">深色模式<span className="text-[10px] text-gray-400 font-normal ml-1">(仅模拟开关)</span></span></div><button onClick={() => setIsDarkMode(!isDarkMode)} className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${isDarkMode ? 'bg-indigo-500' : 'bg-gray-200'}`}><div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform duration-300 ${isDarkMode ? 'translate-x-5' : 'translate-x-0.5'}`}></div></button></div>
+                    <button onClick={() => setCurrentView('PRIVACY')} className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"><div className="flex items-center gap-3"><UserX size={20} className="text-gray-400" /><span className="text-sm font-medium text-slate-700">隐私设置</span></div><ChevronRight size={18} className="text-gray-300" /></button>
+                  </div>
+                  <button onClick={onLogout} className="w-full bg-white text-rose-500 font-bold py-4 rounded-2xl shadow-sm flex items-center justify-center gap-2 active:scale-95 transition-transform"><LogOut size={18} /><span>退出当前账号</span></button>
+                  <div className="text-center mt-4"><p className="text-xs text-gray-400">校友圈 v1.1.2 (MiniProgram)</p></div>
+                </div>
+              );
+          }
+        };
+
+        const getTitle = () => {
+          switch(currentView) {
+            case 'ACCOUNT': return '账号与安全';
+            case 'NOTIFICATIONS': return '消息通知';
+            case 'PRIVACY': return '隐私设置';
+            case 'BLOCK_LIST': return '黑名单管理';
+            default: return '设置';
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 bg-[#f8fafc] z-[70] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+            <div className="bg-white px-4 h-14 flex items-center gap-3 border-b border-gray-100">
+              <button onClick={() => { if (currentView === 'BLOCK_LIST') { setCurrentView('PRIVACY'); } else if (currentView === 'MAIN') { onBack(); } else { setCurrentView('MAIN'); } }} className="p-2 -ml-2 hover:bg-gray-50 rounded-full"><ArrowLeft size={24} className="text-slate-700" /></button>
+              <span className="font-bold text-slate-800 text-lg">{getTitle()}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto">{renderContent()}</div>
+          </div>
+        );
+      };
+
+      // --- APP COMPONENT ---
+
+      const App = () => {
+        const INITIAL_USER = { id: 'me', name: '陈同学', avatar: 'https://picsum.photos/200/200', verified: true, department: '计算机学院', school: '福建商学院', bio: '好好学习，天天向上！努力成为全栈工程师。' };
+        const INITIAL_POSTS = [
+          { id: '1', user: { id: 'u1', name: '吉他社-张伟', avatar: 'https://picsum.photos/101/101', verified: true, department: '艺术学院' }, type: PostType.SOCIAL, category: '活动', content: '🎵 这周末学校有草坪音乐节，大家记得来参加！我们在南操场等你。自带小板凳哦～', images: ['https://picsum.photos/400/200', 'https://picsum.photos/401/200'], tags: ['活动', '音乐节', '周末去哪儿'], likes: 128, comments: 32, shares: 5, viewCount: 2300, timestamp: '1小时前' },
+          { id: 'me1', user: INITIAL_USER, type: PostType.SOCIAL, category: '日常', content: '今天图书馆的晚霞也太美了吧！随手一拍就是大片。📸 #校园风景 #日落', images: ['https://picsum.photos/400/250'], tags: ['摄影', '生活'], likes: 45, comments: 12, shares: 2, viewCount: 560, timestamp: '3小时前' },
+          { id: 'm1', user: { id: 'u4', name: '王大力', avatar: 'https://picsum.photos/102/102', verified: true }, type: PostType.ERRAND, category: '跑腿', content: '求代拿快递，东门菜鸟驿站，送到10号楼楼下。件不大。', price: 5, deadline: '今天 12:00 前', tags: ['跑腿', '代拿'], likes: 0, comments: 2, timestamp: '刚刚' },
+          { id: 'me2', user: INITIAL_USER, type: PostType.TRADE, category: '闲置', content: '出考研英语复习资料，全新未拆封。买多了，低价出。', price: 25, tags: ['考研', '书籍'], likes: 5, comments: 3, timestamp: '昨天' },
+          { id: 'm2', user: { id: 'u5', name: '小爱同学', avatar: 'https://picsum.photos/103/103', verified: true }, type: PostType.TRADE, category: '闲置', content: '毕业出闲置，九成新罗技机械键盘。送一个拔键器。', price: 150, images: ['https://picsum.photos/400/300'], tags: ['数码', '键盘'], likes: 8, comments: 5, timestamp: '2小时前' },
+          { id: '3', user: { id: 'u3', name: '匿名用户', avatar: '', verified: false }, type: PostType.SOCIAL, category: '问答', content: '求问学校附近的兼职，大二学生，课余时间比较多。', tags: ['兼职', '求助'], likes: 15, comments: 8, timestamp: '4小时前', isAnonymous: true },
+          { id: 'me3', user: INITIAL_USER, type: PostType.ERRAND, category: '跑腿', content: '谁在第一食堂？求帮忙带一份黄焖鸡米饭，送到图书馆门口。', price: 3, deadline: '12:30前', tags: ['带饭'], likes: 1, comments: 1, timestamp: '昨天 11:30' }
+        ];
+
+        const [authStep, setAuthStep] = useState('LOGIN');
+        const [currentUser, setCurrentUser] = useState(INITIAL_USER);
+        const [posts, setPosts] = useState(INITIAL_POSTS);
+        const [currentTab, setCurrentTab] = useState(Tab.HOME);
+        const [showPublishModal, setShowPublishModal] = useState(false);
+        const [publishPreSelectType, setPublishPreSelectType] = useState(undefined);
+        const [selectedPost, setSelectedPost] = useState(null);
+        const [actionSheetTarget, setActionSheetTarget] = useState(null);
+        const [selectedChat, setSelectedChat] = useState(null);
+        const [isEditingProfile, setIsEditingProfile] = useState(false);
+        const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+        const [messageDetailType, setMessageDetailType] = useState(null);
+        const [showEventDetail, setShowEventDetail] = useState(false);
+        const [profileSubView, setProfileSubView] = useState(null);
+        const [showShareModal, setShowShareModal] = useState(false);
+        const [showActionSheet, setShowActionSheet] = useState(false);
+
+        const myPostCount = posts.filter(p => p.user.id === currentUser.id).length;
+        const handleLoginSuccess = () => setAuthStep('SCHOOL');
+        const handleSchoolSelected = (schoolName) => { setCurrentUser(prev => ({ ...prev, school: schoolName })); setAuthStep('APP'); };
+        const handleLogout = () => { setAuthStep('LOGIN'); setCurrentTab(Tab.HOME); setIsSettingsOpen(false); };
+        const handleDeletePost = () => {
+           if (actionSheetTarget) {
+             setPosts(prev => prev.filter(p => p.id !== actionSheetTarget.id));
+             setShowActionSheet(false);
+             if (selectedPost && selectedPost.id === actionSheetTarget.id) setSelectedPost(null);
+             setActionSheetTarget(null);
+           }
+        };
+        const handlePublishPost = (newPostData) => {
+           const newPost = { id: Date.now().toString(), user: currentUser, type: newPostData.type || PostType.SOCIAL, content: newPostData.content || '', images: newPostData.images || [], tags: [], likes: 0, comments: 0, shares: 0, timestamp: '刚刚', isAnonymous: newPostData.isAnonymous, price: newPostData.price, deadline: newPostData.deadline, category: newPostData.type === PostType.SOCIAL ? '日常' : '其他', ...newPostData };
+           setPosts([newPost, ...posts]); setShowPublishModal(false);
+           if (newPost.type === PostType.TRADE || newPost.type === PostType.ERRAND) { setCurrentTab(Tab.MARKET); } else { setCurrentTab(Tab.HOME); }
+        };
+        const openPublish = (type) => { setPublishPreSelectType(type); setShowPublishModal(true); };
+
+        const renderProfileSubView = () => {
+          if (!profileSubView) return null;
+          let title = ''; let content = null;
+
+          if (profileSubView === 'VERIFY') {
+            return (
+              <div className="fixed inset-0 bg-white z-[60] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+                 <div className="bg-white px-4 h-14 flex items-center gap-3 border-b border-gray-100 sticky top-0">
+                  <button onClick={() => setProfileSubView(null)} className="p-2 -ml-2 hover:bg-gray-50 rounded-full"><ArrowLeft size={24} /></button>
+                  <span className="font-bold text-lg">实名认证信息</span>
+                </div>
+                <div className="p-6">
+                   <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-10 rounded-full translate-x-10 -translate-y-10"></div>
+                      <div className="flex items-center gap-4 mb-6"><div className="w-16 h-16 bg-white rounded-full p-1"><img src={currentUser.avatar} className="w-full h-full rounded-full object-cover" /></div><div><div className="text-xl font-bold">{currentUser.name}</div><div className="opacity-80 text-sm">{currentUser.school}</div></div></div>
+                      <div className="space-y-2 font-mono text-sm opacity-90"><div className="flex justify-between"><span>学号</span><span>20238899</span></div><div className="flex justify-between"><span>学院</span><span>{currentUser.department}</span></div><div className="flex justify-between"><span>状态</span><span className="bg-emerald-400 text-emerald-900 px-2 rounded text-xs font-bold flex items-center">已认证 <ShieldCheck size={12} className="ml-1"/></span></div></div>
+                   </div>
+                   <p className="text-center text-gray-400 text-xs mt-6">信息由学校统一身份认证系统提供</p>
+                </div>
+              </div>
+            );
+          }
+          if (profileSubView === 'MY_REPORTS') {
+             title = '举报与反馈';
+             content = (
+               <div className="p-4 space-y-3">
+                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50">
+                     <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-gray-400">2023-11-01</span><span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded font-medium">已处理</span></div>
+                     <p className="text-sm text-slate-700 font-medium">举报帖子：包含违规商业广告信息...</p>
+                     <div className="mt-3 text-xs text-gray-500 bg-gray-50 p-2 rounded leading-relaxed">官方回复：感谢反馈，已对该贴进行删除处理。</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50">
+                     <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-gray-400">2023-11-05</span><span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-medium">跟进中</span></div>
+                     <p className="text-sm text-slate-700 font-medium">功能建议：希望能增加夜间模式开关。</p>
+                  </div>
+               </div>
+             );
+          }
+          if (profileSubView === 'MY_POSTS') { title = '我的发布'; const myPosts = posts.filter(p => p.user.id === currentUser.id); content = myPosts.map(post => (<PostCard key={post.id} post={post} onClick={() => setSelectedPost(post)} onShare={() => { setActionSheetTarget(post); setShowShareModal(true); }} onOptions={() => { setActionSheetTarget(post); setShowActionSheet(true); }} />)); } 
+          else if (profileSubView === 'MY_TRADES') { title = '我的交易'; const myTrades = posts.filter(p => p.user.id === currentUser.id && (p.type === PostType.TRADE || p.type === PostType.ERRAND)); content = myTrades.map(post => (<PostCard key={post.id} post={post} onClick={() => setSelectedPost(post)} onShare={() => { setActionSheetTarget(post); setShowShareModal(true); }} onOptions={() => { setActionSheetTarget(post); setShowActionSheet(true); }} />)); } 
+          else if (profileSubView === 'FOLLOWING' || profileSubView === 'FANS') { title = profileSubView === 'FOLLOWING' ? '我的关注' : '我的粉丝'; content = [1,2,3,4].map(i => (<div key={i} className="flex items-center justify-between p-4 bg-white border-b border-gray-50"><div className="flex items-center gap-3"><img src={`https://picsum.photos/50/${50+i}`} className="w-10 h-10 rounded-full"/><span className="font-bold text-slate-700">校友用户 {i}</span></div><button className="text-xs bg-gray-100 px-3 py-1.5 rounded-full text-gray-600 font-bold">已关注</button></div>)); }
+
+          return (
+            <div className="fixed inset-0 bg-[#f0f4f8] z-[60] flex flex-col animate-[slideRight_0.3s_ease-out]" style={{animation: 'slideRight 0.3s ease-out'}}>
+              <div className="bg-white px-4 h-14 flex items-center gap-3 border-b border-gray-100 sticky top-0 z-10"><button onClick={() => setProfileSubView(null)} className="p-2 -ml-2 hover:bg-gray-50 rounded-full"><ArrowLeft size={24} /></button><span className="font-bold text-lg">{title}</span></div>
+              <div className="flex-1 overflow-y-auto p-0 pb-10">
+                 {content && (Array.isArray(content) && content.length > 0 ? content : (profileSubView !== 'MY_REPORTS' && <div className="text-center py-20 text-gray-400">暂无内容</div>))}
+                 {profileSubView === 'MY_REPORTS' && content}
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="relative w-full max-w-[400px] h-[850px] bg-black rounded-[3rem] shadow-[0_0_0_12px_#333,0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden border-[6px] border-gray-800 ring-2 ring-gray-700/50">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-28 h-8 bg-black z-50 rounded-full transition-all duration-300 hover:w-48 hover:h-12 flex items-center justify-center group">
+               <div className="w-full h-full flex items-center justify-between px-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200"><div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div><div className="text-[8px] text-white font-medium">正在录音</div><div className="w-4 h-4 bg-gray-700 rounded-full"></div></div>
+            </div>
+            <MiniCapsule />
+            <div className="w-full h-full bg-[#f0f4f8] relative flex flex-col pt-12">
+              {authStep === 'LOGIN' && <Login onLogin={handleLoginSuccess} />}
+              {authStep === 'SCHOOL' && <SchoolSelect onConfirm={handleSchoolSelected} />}
+              {authStep === 'APP' && (
+                <>
+                  <div className="flex-1 overflow-y-auto no-scrollbar relative" id="scroll-container">
+                    {currentTab === Tab.HOME && (<Home posts={posts} onPostClick={setSelectedPost} onNotificationClick={() => setCurrentTab(Tab.MESSAGE)} onShare={(p) => { setActionSheetTarget(p); setShowShareModal(true); }} onOptions={(p) => { setActionSheetTarget(p); setShowActionSheet(true); }} onBannerClick={() => setShowEventDetail(true)} />)}
+                    {currentTab === Tab.MARKET && (<Market posts={posts} onPostClick={setSelectedPost} onQuickPublish={openPublish} onShare={(p) => { setActionSheetTarget(p); setShowShareModal(true); }} onOptions={(p) => { setActionSheetTarget(p); setShowActionSheet(true); }} />)}
+                    {currentTab === Tab.MESSAGE && (<Messages onChatClick={setSelectedChat} onViewLikes={() => setMessageDetailType('LIKES')} onViewComments={() => setMessageDetailType('COMMENTS')} />)}
+                    {currentTab === Tab.PROFILE && (<Profile user={currentUser} postCount={myPostCount} onSettings={() => setIsSettingsOpen(true)} onEdit={() => setIsEditingProfile(true)} onMenuClick={(type) => setProfileSubView(type)} onStatsClick={(type) => setProfileSubView(type)} />)}
+                    {!selectedPost && !selectedChat && !isEditingProfile && !isSettingsOpen && !messageDetailType && !showEventDetail && !profileSubView && (<div className="h-24"></div>)}
+                  </div>
+                  {!selectedPost && !selectedChat && !isEditingProfile && !isSettingsOpen && !messageDetailType && !showEventDetail && !profileSubView && (<TabBar currentTab={currentTab} onTabChange={(tab) => { if (tab === Tab.PUBLISH) { openPublish(); } else { setCurrentTab(tab); document.getElementById('scroll-container')?.scrollTo(0,0); } }} />)}
+                  {showEventDetail && (
+                    <div className="fixed inset-0 bg-white z-[60] animate-[slideUp_0.3s_ease-out] flex flex-col" style={{animation: 'slideUp 0.3s ease-out'}}>
+                       <div className="relative h-64 bg-indigo-600">
+                          <img src="https://picsum.photos/400/300" className="w-full h-full object-cover opacity-60" />
+                          <button onClick={() => setShowEventDetail(false)} className="absolute top-4 left-4 bg-white/20 backdrop-blur-md p-2 rounded-full text-white"><ArrowLeft /></button>
+                          <div className="absolute bottom-6 left-6 text-white"><span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded-md mb-2 inline-block">火热报名中</span><h1 className="text-3xl font-black mb-1">校园歌手大赛</h1><p className="opacity-90">Sing Your Dream · 唱出你的梦想</p></div>
+                       </div>
+                       <div className="p-6 flex-1 overflow-y-auto">
+                          <div className="flex items-center gap-4 mb-6 text-sm text-gray-600"><div className="flex items-center gap-1"><Music size={16} /> 第十届</div><div className="w-1 h-1 bg-gray-300 rounded-full"></div><div>南操场</div><div className="w-1 h-1 bg-gray-300 rounded-full"></div><div>12月20日 18:00</div></div>
+                          <p className="text-gray-700 leading-relaxed mb-6">不管是流行、民谣还是摇滚，只要你爱唱，这个舞台就属于你！前三名将获得丰厚奖品及校级荣誉证书。</p>
+                          <h3 className="font-bold text-lg mb-3">奖项设置</h3>
+                          <ul className="space-y-2 text-sm text-gray-600 mb-8"><li>🥇 冠军：华为 MatePad + 证书</li><li>🥈 亚军：AirPods Pro + 证书</li><li>🥉 季军：罗技机械键盘 + 证书</li></ul>
+                          <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-200 active:scale-95 transition-all">立即报名</button>
+                       </div>
+                    </div>
+                  )}
+                  {showPublishModal && <Publish initialType={publishPreSelectType} onCancel={() => setShowPublishModal(false)} onSubmit={handlePublishPost} />}
+                  {selectedPost && <PostDetail post={selectedPost} onBack={() => setSelectedPost(null)} onShare={() => { setActionSheetTarget(selectedPost); setShowShareModal(true); }} onOptions={() => { setActionSheetTarget(selectedPost); setShowActionSheet(true); }} />}
+                  {selectedChat && <ChatDetail chat={selectedChat} onBack={() => setSelectedChat(null)} />}
+                  {isEditingProfile && <EditProfile user={currentUser} onSave={(u) => { setCurrentUser(p => ({...p, ...u})); setIsEditingProfile(false); }} onCancel={() => setIsEditingProfile(false)} />}
+                  {isSettingsOpen && <Settings onLogout={handleLogout} onBack={() => setIsSettingsOpen(false)} />}
+                  {messageDetailType && <MessageListDetail type={messageDetailType} onBack={() => setMessageDetailType(null)} />}
+                  {renderProfileSubView()}
+                  {showShareModal && <ShareModal onClose={() => setShowShareModal(false)} />}
+                  {showActionSheet && (<ActionSheet isOwner={actionSheetTarget?.user.id === currentUser.id} onDelete={handleDeletePost} onClose={() => setShowActionSheet(false)} />)}
+                </>
+              )}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1.5 bg-black rounded-full opacity-20 pointer-events-none z-[100]"></div>
+            </div>
+          </div>
+        );
+      };
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+</body>
+</html>

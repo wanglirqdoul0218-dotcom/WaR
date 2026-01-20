@@ -1,0 +1,9 @@
+{
+  "name": "校友圈 - 校园生活助手",
+  "description": "大学生一站式信息互助与服务平台，聚合校园社交、二手交易与跑腿服务。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
